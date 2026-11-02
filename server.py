@@ -10,6 +10,8 @@
   GET  /source    {"source": "<url del repositorio>", "license": "AGPL-3.0-or-later"}
   POST /natal     JSON de chart.compute  -> carta natal
   POST /transits  JSON de transits.compute -> tránsitos
+  POST /pdf       {"html": "..."} -> application/pdf (WeasyPrint)
+  POST /png       {"svg": "...", "width": 1200} -> image/png (CairoSVG)
 
 Si ASTRO_CORE_KEY está definida, los POST exigen la cabecera X-Core-Key con ese valor.
 No publicar este puerto a internet: está pensado para la red interna de Docker.
@@ -20,11 +22,12 @@ import os
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from astro_core import chart, transits
+from astro_core import chart, render, transits
 
 SOURCE_URL = os.environ.get('ASTRO_CORE_SOURCE_URL', 'https://github.com/herlafon/astro-core')
 KEY = os.environ.get('ASTRO_CORE_KEY', '')
 MAX_BODY = 262144  # los tránsitos reciben la carta natal completa
+MAX_BODY_RENDER = 4 * 1024 * 1024  # un informe completo en HTML
 
 INFO = (
     'astro-core: cálculo astrológico sobre Swiss Ephemeris (c) Astrodienst AG.\n'
@@ -47,6 +50,13 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_bytes(self, code, data, ctype):
+        self.send_response(code)
+        self.send_header('Content-Type', ctype)
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def do_GET(self):
         if self.path == '/':
             return self._send(200, INFO, 'text/plain; charset=utf-8')
@@ -57,7 +67,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {'error': 'not_found'})
 
     def do_POST(self):
-        if self.path not in ('/natal', '/transits'):
+        if self.path not in ('/natal', '/transits', '/pdf', '/png'):
             return self._send(404, {'error': 'not_found'})
         if KEY and not hmac.compare_digest(self.headers.get('X-Core-Key', ''), KEY):
             return self._send(401, {'error': 'unauthorized'})
@@ -65,10 +75,14 @@ class Handler(BaseHTTPRequestHandler):
             n = int(self.headers.get('Content-Length', '0'))
         except ValueError:
             n = -1
-        if n <= 0 or n > MAX_BODY:
+        if n <= 0 or n > (MAX_BODY_RENDER if self.path in ('/pdf', '/png') else MAX_BODY):
             return self._send(400, {'error': 'bad_length'})
         try:
             inp = json.loads(self.rfile.read(n))
+            if self.path == '/pdf':
+                return self._send_bytes(200, render.pdf(inp['html']), 'application/pdf')
+            if self.path == '/png':
+                return self._send_bytes(200, render.png(inp['svg'], int(inp.get('width', 1200))), 'image/png')
             out = chart.compute(inp) if self.path == '/natal' else transits.compute(inp)
         except (ValueError, KeyError, TypeError) as e:
             return self._send(400, {'error': 'bad_input', 'detail': type(e).__name__})

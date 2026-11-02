@@ -8,7 +8,7 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from astro_core import chart, transits  # noqa: E402
+from astro_core import chart, render, transits  # noqa: E402
 import server  # noqa: E402
 
 CASE = {'birth_utc': '1980-11-11 23:00:00', 'lat': -34.92126, 'lon': -57.95442, 'time_known': True}
@@ -21,6 +21,15 @@ class Core(unittest.TestCase):
         self.assertEqual(c['planets'][0]['sign'], 'scorpio')
         self.assertEqual(c['angles']['asc']['sign'], 'taurus')
         self.assertEqual(len(c['houses']), 12)
+
+    def test_render(self):
+        sys.path.insert(0, os.environ.get('ASTRO_RENDER_LIBS', ''))
+        pdf = render.pdf('<html><body><h1>Hola</h1></body></html>')
+        self.assertTrue(pdf.startswith(b'%PDF'))
+        png = render.png('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="red"/></svg>', 200)
+        self.assertTrue(png.startswith(b'\x89PNG'))
+        with self.assertRaises(ValueError):  # sin descargas externas
+            render._no_fetch('http://x')
 
     def test_transits(self):
         t = transits.compute({'natal': chart.compute(dict(CASE)), 'start_local': '2026-10-30', 'days': 3, 'offset_min': -180})

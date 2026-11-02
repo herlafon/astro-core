@@ -14,6 +14,8 @@ curl -s localhost:8000/natal -d '{"birth_utc":"1980-11-11 23:00:00","lat":-34.92
 ```
 Por consola: `echo '{...}' | python -m astro_core.chart`.
 
+También convierte documentos (no guarda nada): `POST /pdf` `{"html": "..."}` → PDF (WeasyPrint) y `POST /png` `{"svg": "...", "width": 1200}` → PNG (CairoSVG). Sin acceso a recursos externos: el HTML tiene que venir autocontenido.
+
 Variables: `PORT` (8000), `ASTRO_CORE_KEY` (si existe, los POST exigen `X-Core-Key`), `ASTRO_CORE_SOURCE_URL`.
 Docker: `docker build -t astro-core . && docker run --rm -p 127.0.0.1:8000:8000 astro-core`.
 
